@@ -91,11 +91,20 @@ Each writes per-contrast `DE_*.csv` (logFC, p, FDR; the paper mode adds `welch_P
 **2. Downstream** (default to the paper results; pass another folder as arg 1):
 
 ```bash
-Rscript scripts/make_plots.R        [results_dir]   # volcano (.pdf/.png) + heatmap per contrast
-Rscript scripts/run_STRING_PPI.R    [results_dir]   # STRING network image + edges + enrichment (API)
-Rscript scripts/make_PPI_figures.R  [results_dir]   # network + enrichment-bar figures (pathways, GO)
+Rscript scripts/make_plots.R           [results_dir]   # volcano (.pdf/.png) + heatmap per contrast
+Rscript scripts/run_STRING_PPI.R       [results_dir]   # STRING network image + edges + enrichment (API)
+Rscript scripts/make_PPI_figures.R     [results_dir]   # network + enrichment-bar figures (pathways, GO)
+Rscript scripts/compare_limma_welch.R  [results_dir]   # limma vs Welch concordance table + plots
 ```
-Outputs land in `<results_dir>/plots/` and `/PPI/`.
+Outputs land in `<results_dir>/plots/`, `/PPI/`, and `/comparison/`.
+
+> **limma vs Welch.** The paper driver runs both tests on the same sites (`concordance=TRUE`),
+> so each `DE_*.csv` carries limma (`P.Value`/`adj.P.Val`) **and** Welch (`welch_P`/`welch_adjP`).
+> `compare_limma_welch.R` quantifies the difference: `limma_vs_welch_concordance.csv` (per-contrast
+> Spearman/Pearson agreement, sig-count overlap, % where limma is more significant), per-contrast
+> p-value scatters (`*_p_concordance.pdf`), a method-count bar (`method_significance_counts.pdf`),
+> and `variance_moderation.pdf` — the empirical-Bayes shrinkage of each site's variance toward the
+> prior, which is *why* limma and Welch diverge at this sample size.
 
 > **Enrichment / GO:** STRING's enrichment (`/PPI/*_enrichment.tsv`) already covers GO Biological
 > Process / Molecular Function / Cellular Component, pathways (KEGG, Reactome, WikiPathways), and HPO
@@ -117,7 +126,8 @@ Ramani_RobertsRAnalysis/
 │   ├── run_McEachin_DE_fallback.R  # fallback-mode driver
 │   ├── make_plots.R                # volcano + heatmap
 │   ├── run_STRING_PPI.R            # STRING PPI networks + enrichment (API)
-│   └── make_PPI_figures.R          # network + enrichment-bar combined figures
+│   ├── make_PPI_figures.R          # network + enrichment-bar combined figures
+│   └── compare_limma_welch.R       # limma vs Welch concordance + variance-moderation plots
 ├── R/
 │   ├── nitro_DE_functions.R        # shared DE pipeline (load→normalize→impute→test)
 │   ├── plotting_functions.R        # volcano, heatmap, enrichment bars, network combiner

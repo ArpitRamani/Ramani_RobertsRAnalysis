@@ -107,3 +107,58 @@ combine_net_bars <- function(png_file, bar_gg, out_file, title = "") {
                                     theme = theme(plot.title = element_text(face = "bold")))
   ggsave(out_file, p, width = net_w + bars_w, height = net_h + leg_h, limitsize = FALSE)
 }
+
+# --- limma vs Welch comparison plots ---------------------------------------
+
+# Per-contrast scatter of -log10 p, limma vs Welch, classified by who calls each site.
+plot_p_concordance <- function(de, title = "", p_thresh = 0.05, top_n = 12) {
+  d <- de[is.finite(de$P.Value) & is.finite(de$welch_P), ]
+  d$lx <- -log10(d$welch_P); d$ly <- -log10(d$P.Value)
+  d$cls <- with(d, ifelse(P.Value < p_thresh & welch_P < p_thresh, "Both",
+                   ifelse(P.Value < p_thresh, "limma only",
+                   ifelse(welch_P < p_thresh, "Welch only", "Neither"))))
+  d$cls <- factor(d$cls, levels = c("Both", "limma only", "Welch only", "Neither"))
+  disc <- d[d$cls %in% c("limma only", "Welch only"), ]
+  disc <- head(disc[order(-abs(disc$ly - disc$lx)), ], top_n)
+  rho  <- suppressWarnings(cor(d$lx, d$ly, method = "spearman"))
+  ggplot(d, aes(lx, ly, color = cls)) +
+    geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = 0.3) +
+    geom_hline(yintercept = -log10(p_thresh), linetype = 3, linewidth = 0.3) +
+    geom_vline(xintercept = -log10(p_thresh), linetype = 3, linewidth = 0.3) +
+    geom_point(alpha = 0.8, size = 1.7) +
+    ggrepel::geom_text_repel(data = disc, aes(label = Gene), size = 3, max.overlaps = Inf,
+                             box.padding = 0.3, segment.size = 0.2, show.legend = FALSE) +
+    scale_color_manual(name = NULL, values = c(Both = "#1B7837", "limma only" = "#B2182B",
+                                               "Welch only" = "#2166AC", Neither = "grey75")) +
+    labs(title = sprintf("%s   (Spearman rho = %.3f)", title, rho),
+         x = expression(-log[10]~p[Welch]), y = expression(-log[10]~p[limma])) +
+    theme_bw(base_size = 12) + theme(plot.title = element_text(face = "bold"))
+}
+
+# Grouped bar of nominally-significant site counts, limma vs Welch, across contrasts.
+plot_method_counts <- function(summ) {
+  long <- data.frame(contrast = rep(summ$contrast, 2),
+                     method   = rep(c("limma", "Welch"), each = nrow(summ)),
+                     n        = c(summ$limma_sig, summ$welch_sig))
+  ggplot(long, aes(contrast, n, fill = method)) +
+    geom_col(position = position_dodge(0.7), width = 0.65) +
+    geom_text(aes(label = n), position = position_dodge(0.7), vjust = -0.3, size = 3.2) +
+    scale_fill_manual(name = NULL, values = c(limma = "#B2182B", Welch = "#2166AC")) +
+    labs(x = NULL, y = "sites with p < 0.05", title = "Nominal significance by method") +
+    theme_bw(base_size = 12) + theme(plot.title = element_text(face = "bold"))
+}
+
+# The mechanism: empirical-Bayes shrinks each site's raw residual variance toward a prior.
+plot_variance_moderation <- function(sigma2, s2post, s2prior,
+                                      title = "limma variance moderation (empirical Bayes)") {
+  d <- data.frame(raw = sigma2, mod = s2post)
+  ggplot(d, aes(raw, mod)) +
+    geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = 0.3) +
+    geom_hline(yintercept = s2prior, color = "#B2182B", linewidth = 0.5) +
+    annotate("text", x = min(d$raw, na.rm = TRUE), y = s2prior,
+             label = expression(prior~s[0]^2), hjust = 0, vjust = -0.4, color = "#B2182B", size = 3.2) +
+    geom_point(alpha = 0.55, size = 1.5, color = "#2b8cbe") +
+    scale_x_log10() + scale_y_log10() +
+    labs(x = "raw residual variance (per site)", y = "moderated variance  (s2.post)", title = title) +
+    theme_bw(base_size = 12) + theme(plot.title = element_text(face = "bold"))
+}
