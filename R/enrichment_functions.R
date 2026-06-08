@@ -1,18 +1,6 @@
-# GO enrichment (clusterProfiler) + STRING PPI (REST API).
-
-run_go <- function(sig_genes, universe_genes, ont = "BP") {
-  suppressWarnings(suppressMessages({ library(clusterProfiler); library(org.Hs.eg.db) }))
-  sig_genes      <- unique(na.omit(sig_genes))
-  universe_genes <- unique(na.omit(universe_genes))
-  if (length(sig_genes) < 3) return(NULL)
-  map_e <- function(g) suppressWarnings(suppressMessages(
-    clusterProfiler::bitr(g, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db)$ENTREZID))
-  sig_e <- map_e(sig_genes); uni_e <- map_e(universe_genes)
-  if (length(sig_e) < 3) return(NULL)
-  clusterProfiler::enrichGO(gene = sig_e, universe = uni_e, OrgDb = org.Hs.eg.db,
-                            ont = ont, pAdjustMethod = "BH",
-                            pvalueCutoff = 0.05, qvalueCutoff = 0.2, readable = TRUE)
-}
+# STRING protein-protein interactions + functional enrichment via the REST API.
+# enrichment covers GO (Process/Function/Component), pathways (KEGG/Reactome/WikiPathways),
+# HPO, and more -- filter by the `category` column.
 
 string_ppi <- function(genes, out_dir, label, species = 9606,
                        required_score = 400, caller = "nitration_pipeline") {

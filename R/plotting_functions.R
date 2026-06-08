@@ -1,4 +1,4 @@
-# Volcano + heatmap helpers.
+# Volcano + heatmap + STRING-enrichment bars + network/enrichment combiner.
 suppressWarnings(suppressMessages({ library(ggplot2); library(ggrepel) }))
 
 plot_volcano <- function(de, title = "", p_thresh = 0.05, fc_thresh = 0, top_n = 25) {
@@ -30,4 +30,35 @@ plot_heatmap <- function(mat, samples, sites, file, title = "") {
   pheatmap::pheatmap(m[, ord], annotation_col = ann, cluster_cols = FALSE,
                      show_rownames = length(sites) <= 60, show_colnames = FALSE,
                      main = title, fontsize_row = 6, filename = file, width = 7, height = 8)
+}
+
+# Horizontal -log10(FDR) bar chart of the top STRING-enriched terms in given categories.
+# STRING categories: Process / Function / Component (GO BP/MF/CC), KEGG, RCTM (Reactome),
+# WikiPathways, HPO, TISSUES, COMPARTMENTS, ...
+plot_enrichment_bars <- function(enr, categories, top_n = 15, title = "") {
+  d <- enr[enr$category %in% categories & is.finite(enr$fdr), , drop = FALSE]
+  if (!nrow(d)) return(NULL)
+  d <- d[order(d$fdr), , drop = FALSE]
+  d <- d[seq_len(min(top_n, nrow(d))), ]
+  wrap <- function(x) vapply(x, function(s) paste(strwrap(s, 40), collapse = "\n"), character(1))
+  d$lab <- factor(wrap(d$description), levels = rev(wrap(d$description)))
+  d$nlp <- -log10(d$fdr)
+  ggplot(d, aes(nlp, lab, fill = nlp)) +
+    geom_col(width = 0.72) +
+    scale_fill_gradient(low = "#a8ddb5", high = "#2b8cbe", guide = "none") +
+    labs(x = expression(-log[10](FDR)), y = NULL, title = title) +
+    theme_bw(base_size = 11) +
+    theme(axis.text.y = element_text(size = 8), plot.title = element_text(face = "bold", size = 11))
+}
+
+# Network PNG (left) + enrichment bar chart (right), as one figure.
+combine_net_bars <- function(png_file, bar_gg, out_file, title = "") {
+  img   <- png::readPNG(png_file)
+  g_img <- grid::rasterGrob(img, interpolate = TRUE,
+                            width = grid::unit(1, "npc"), height = grid::unit(1, "npc"))
+  p <- patchwork::wrap_elements(full = g_img) + bar_gg +
+       patchwork::plot_layout(widths = c(1, 1)) +
+       patchwork::plot_annotation(title = title,
+                                  theme = theme(plot.title = element_text(face = "bold")))
+  ggsave(out_file, p, width = 16, height = 8)
 }

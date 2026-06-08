@@ -67,12 +67,12 @@ Choose per question; both are defensible.
 ```r
 # R >= 4.x. One-time install:
 install.packages(c("missForest","randomForest","ggplot2","ggrepel","ggpubr","pheatmap",
-                   "doParallel","foreach","snow","doSNOW","data.table","httr","jsonlite"))
+                   "png","patchwork","doParallel","foreach","snow","doSNOW","data.table"))
 if (!requireNamespace("BiocManager", quietly=TRUE)) install.packages("BiocManager")
-BiocManager::install(c("limma","vsn","clusterProfiler","org.Hs.eg.db","enrichplot"))
+BiocManager::install(c("limma","vsn"))
 ```
 > - `snow` is required for TAMPOR's parallel backend — without it the pipeline falls back to median-centering.
-> - `clusterProfiler`/`org.Hs.eg.db`/`enrichplot` power `run_GO.R`; `pheatmap` powers the heatmaps.
+> - `pheatmap` powers the heatmaps; `png`/`patchwork` assemble the network+enrichment figures.
 > - `run_STRING_PPI.R` needs only internet access (it calls the STRING REST API via `download.file`).
 
 ## Run
@@ -91,16 +91,16 @@ Each writes per-contrast `DE_*.csv` (logFC, p, FDR; the paper mode adds `welch_P
 **2. Downstream** (default to the paper results; pass another folder as arg 1):
 
 ```bash
-Rscript scripts/make_plots.R       [results_dir]   # volcano (.pdf/.png) + heatmap per contrast
-Rscript scripts/run_GO.R           [results_dir]   # GO:BP enrichment (clusterProfiler) + dotplots
-Rscript scripts/run_STRING_PPI.R   [results_dir]   # STRING network image + edges + enrichment (API)
+Rscript scripts/make_plots.R        [results_dir]   # volcano (.pdf/.png) + heatmap per contrast
+Rscript scripts/run_STRING_PPI.R    [results_dir]   # STRING network image + edges + enrichment (API)
+Rscript scripts/make_PPI_figures.R  [results_dir]   # network + enrichment-bar figures (pathways, GO)
 ```
-Outputs land in `<results_dir>/plots/`, `/GO/`, `/PPI/`.
+Outputs land in `<results_dir>/plots/` and `/PPI/`.
 
-> **GO background note:** `run_GO.R` uses the **nitrated proteins as the universe** (the rigorous
-> background — "what's special among nitrated proteins"). With this small background it often returns
-> *no* significant BP terms (a meaningful null). For genome-wide background, set `universe = NULL` in
-> the `run_go()` call. STRING's enrichment (genome background) is the broader, more permissive view.
+> **Enrichment / GO:** STRING's enrichment (`/PPI/*_enrichment.tsv`) already covers GO Biological
+> Process / Molecular Function / Cellular Component, pathways (KEGG, Reactome, WikiPathways), and HPO
+> — filter by the `category` column. `make_PPI_figures.R` renders the top terms as −log10(FDR) bars
+> beside each STRING network, so there is no separate GO step.
 
 Both DE drivers share `R/nitro_DE_functions.R`; edit the `cfg` block at the top of any driver.
 
@@ -116,12 +116,12 @@ Ramani_RobertsRAnalysis/
 │   ├── run_McEachin_DE_TAMPOR.R    # TAMPOR-mode driver
 │   ├── run_McEachin_DE_fallback.R  # fallback-mode driver
 │   ├── make_plots.R                # volcano + heatmap
-│   ├── run_GO.R                    # GO:BP enrichment
-│   └── run_STRING_PPI.R            # STRING PPI networks
+│   ├── run_STRING_PPI.R            # STRING PPI networks + enrichment (API)
+│   └── make_PPI_figures.R          # network + enrichment-bar combined figures
 ├── R/
 │   ├── nitro_DE_functions.R        # shared DE pipeline (load→normalize→impute→test)
-│   ├── plotting_functions.R        # volcano + heatmap helpers
-│   ├── enrichment_functions.R      # GO (clusterProfiler) + STRING API helpers
+│   ├── plotting_functions.R        # volcano, heatmap, enrichment bars, network combiner
+│   ├── enrichment_functions.R      # STRING API helper
 │   └── vendor/TAMPOR.R             # official TAMPOR (edammer/TAMPOR), vendored
 ├── data/
 │   ├── McEachin_single-site_nitro_snapshot.tsv   # TMT-Integrator input (snapshot)
