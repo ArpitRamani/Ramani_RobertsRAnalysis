@@ -1,0 +1,140 @@
+# Ramani_RobertsRAnalysis
+
+Differential-expression analysis of **protein nitration** (nitro-tyrosine / nitro-tryptophan)
+in the **McEachin et al. C9orf72 ALS spinal-cord** TMTpro dataset — the R/statistics half of
+the lab's nitration project (applying an in-house CSF nitration workflow to the McEachin spinal-cord dataset).
+
+Upstream (mass-spec → site matrix) is done in **FragPipe → TMT-Integrator**. This repo starts
+from the TMT-Integrator single-site abundance matrix and produces per-contrast DE tables.
+
+---
+
+## Pipeline
+
+```
+TMT-Integrator single-site abundance  (sites × 36 channels)
+        │
+        ▼   drop pooled reference channel 126  → 34 patient samples
+   TAMPOR (noGIS)            ← batch + sample-loading normalization (Seyfried-lab median polish)
+        │                       (requires a site be present in BOTH plexes → restricts to the
+        │                        cross-batch-detectable core, ~124 sites)
+        ▼
+   missingness filter        ← keep sites ≥50% present
+        │
+        ▼
+   missForest imputation     ← random-forest fill of remaining gaps
+        │
+        ▼
+   limma                     ← moderated t-stats per site, 3 contrasts, BH-FDR
+        │
+        ▼
+   DE_<contrast>.csv         ← logFC, p, FDR  (volcanoes & GO done downstream by user)
+```
+
+### Design (from `data/metadata/original_metaData.csv`)
+34 patients across 2 TMTpro-18 plexes (b01/b02), **balanced across plexes**:
+
+| Group   | n  | Meaning                                   |
+|---------|----|-------------------------------------------|
+| c9ALS   | 18 | C9orf72-expansion ALS, untreated          |
+| ASO     | 6  | C9 ALS treated with BIIB078 antisense drug |
+| Control | 10 | non-ALS controls                          |
+
+Channel **126** in each plex is the pooled reference (excluded from patient DE).
+
+### Contrasts
+- `c9ALS_vs_Control` — disease effect
+- `ASO_vs_Control` — does treatment normalize nitration?
+- `c9ALS_vs_ASO` — treatment effect
+
+---
+
+## Two normalization modes (important)
+
+| Mode | Sites analyzed | When it's used |
+|------|----------------|----------------|
+| **TAMPOR (noGIS)** | ~124 | default; rigorous cross-batch normalization, but only keeps sites detected in **both** plexes |
+| **log2 + median-center (fallback)** | ~419 | auto-used if TAMPOR deps are missing; keeps the sparse one-plex sites, adds batch as a limma covariate |
+
+The gap is real and methodological: a sparse PTM is often sampled in only one plex, and TAMPOR
+can't compute a cross-batch ratio for those. TAMPOR = robust core; fallback = fuller but noisier.
+Choose per question; both are defensible.
+
+---
+
+## Setup
+
+```r
+# R >= 4.x. One-time install:
+install.packages(c("missForest","randomForest","ggplot2","ggrepel","ggpubr","pheatmap",
+                   "doParallel","foreach","snow","doSNOW","data.table","httr","jsonlite"))
+if (!requireNamespace("BiocManager", quietly=TRUE)) install.packages("BiocManager")
+BiocManager::install(c("limma","vsn","clusterProfiler","org.Hs.eg.db","enrichplot"))
+```
+> - `snow` is required for TAMPOR's parallel backend — without it the pipeline falls back to median-centering.
+> - `clusterProfiler`/`org.Hs.eg.db`/`enrichplot` power `run_GO.R`; `pheatmap` powers the heatmaps.
+> - `run_STRING_PPI.R` needs only internet access (it calls the STRING REST API via `download.file`).
+
+## Run
+
+**1. Differential expression** — pick a mode (each writes to its own results folder):
+
+```bash
+Rscript scripts/run_McEachin_DE_paper.R      # PRIMARY: manuscript-faithful (log2, no TAMPOR);
+                                             #          limma + Welch concordance. 419 sites.
+Rscript scripts/run_McEachin_DE_TAMPOR.R     # robustness check: TAMPOR core. 124 sites.
+Rscript scripts/run_McEachin_DE_fallback.R   # log2 + median-center, batch in model. 419 sites.
+```
+Each writes per-contrast `DE_*.csv` (logFC, p, FDR; the paper mode adds `welch_P`/`welch_adjP`),
+`DE_summary.csv`, plus `cleanDat_normalized_imputed.tsv` + `samples.csv` for the steps below.
+
+**2. Downstream** (default to the paper results; pass another folder as arg 1):
+
+```bash
+Rscript scripts/make_plots.R       [results_dir]   # volcano (.pdf/.png) + heatmap per contrast
+Rscript scripts/run_GO.R           [results_dir]   # GO:BP enrichment (clusterProfiler) + dotplots
+Rscript scripts/run_STRING_PPI.R   [results_dir]   # STRING network image + edges + enrichment (API)
+```
+Outputs land in `<results_dir>/plots/`, `/GO/`, `/PPI/`.
+
+> **GO background note:** `run_GO.R` uses the **nitrated proteins as the universe** (the rigorous
+> background — "what's special among nitrated proteins"). With this small background it often returns
+> *no* significant BP terms (a meaningful null). For genome-wide background, set `universe = NULL` in
+> the `run_go()` call. STRING's enrichment (genome background) is the broader, more permissive view.
+
+Both DE drivers share `R/nitro_DE_functions.R`; edit the `cfg` block at the top of any driver.
+
+---
+
+## Repo layout
+
+```
+Ramani_RobertsRAnalysis/
+├── README.md
+├── scripts/
+│   ├── run_McEachin_DE_paper.R     # PRIMARY DE driver (manuscript-faithful)
+│   ├── run_McEachin_DE_TAMPOR.R    # TAMPOR-mode driver
+│   ├── run_McEachin_DE_fallback.R  # fallback-mode driver
+│   ├── make_plots.R                # volcano + heatmap
+│   ├── run_GO.R                    # GO:BP enrichment
+│   └── run_STRING_PPI.R            # STRING PPI networks
+├── R/
+│   ├── nitro_DE_functions.R        # shared DE pipeline (load→normalize→impute→test)
+│   ├── plotting_functions.R        # volcano + heatmap helpers
+│   ├── enrichment_functions.R      # GO (clusterProfiler) + STRING API helpers
+│   └── vendor/TAMPOR.R             # official TAMPOR (edammer/TAMPOR), vendored
+├── data/
+│   ├── McEachin_single-site_nitro_snapshot.tsv   # TMT-Integrator input (snapshot)
+│   └── metadata/
+│       ├── original_metaData.csv   # full clinical metadata (used for grouping)
+│       └── numeric_metaData.csv    # slim Sample/Batch/Disease/Sex/Age
+└── results/
+    └── McEachin_DE_paper/          # DE outputs + plots/ GO/ PPI/ subfolders
+```
+
+## Provenance / upstream parameters
+TMT-Integrator config that produced the input matrix: `min_snr=180`, `min_resolution=0`,
+`min_site_prob=0.1`, `min_purity=0.5`, `min_pep_prob=0.9`, `ms1_int=true`, `add_Ref=1`
+(matches the reference in-house run). The `min_snr=180` value is critical — `1000` collapses the result.
+
+TAMPOR: Dammer et al., Seyfried lab — https://github.com/edammer/TAMPOR

@@ -1,0 +1,18 @@
+# R session junk
+.Rhistory
+.RData
+.Rproj.user/
+Rplots.pdf
+
+# OS
+.DS_Store
+
+# ============================================================================
+#  DO NOT COMMIT — patient clinical metadata + unpublished study data/results.
+#  This is a CODE-ONLY public repo. Real data stays local / in a private store.
+# ============================================================================
+data/**
+!data/README.md
+results/**
+!results/.gitkeep
+*.raw
