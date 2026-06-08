@@ -51,28 +51,59 @@ plot_enrichment_bars <- function(enr, categories, top_n = 15, title = "") {
     theme(axis.text.y = element_text(size = 8), plot.title = element_text(face = "bold", size = 11))
 }
 
-# Pad a raster array to a square with white margins (no crop, no node loss),
-# so it can fill a square panel without aspect-ratio distortion.
-pad_to_square <- function(img) {
-  d <- dim(img); h <- d[1]; w <- d[2]
-  if (h == w) return(img)
-  s  <- max(h, w)
+# Pad a raster array to a target width/height aspect with white margins (no crop,
+# no node loss), so it can fill a panel of that aspect without distortion.
+pad_to_aspect <- function(img, target) {            # target = width / height
+  d <- dim(img); h <- d[1]; w <- d[2]; cur <- w / h
   ch <- if (length(d) == 3) d[3] else 1L
-  canvas <- array(1, dim = c(s, s, ch))          # opaque white
-  y0 <- (s - h) %/% 2; x0 <- (s - w) %/% 2
-  if (length(d) == 3) canvas[(y0 + 1):(y0 + h), (x0 + 1):(x0 + w), ] <- img
-  else                canvas[(y0 + 1):(y0 + h), (x0 + 1):(x0 + w)]   <- img
+  if (abs(cur - target) < 1e-3) return(img)
+  if (cur < target) {                               # too narrow -> add width
+    nw <- round(h * target); x0 <- (nw - w) %/% 2
+    canvas <- array(1, dim = c(h, nw, ch))
+    if (length(d) == 3) canvas[, (x0 + 1):(x0 + w), ] <- img else canvas[, (x0 + 1):(x0 + w)] <- img
+  } else {                                          # too wide -> add height
+    nh <- round(w / target); y0 <- (nh - h) %/% 2
+    canvas <- array(1, dim = c(nh, w, ch))
+    if (length(d) == 3) canvas[(y0 + 1):(y0 + h), , ] <- img else canvas[(y0 + 1):(y0 + h), ] <- img
+  }
   canvas
 }
 
-# Network PNG (left, padded to square) + enrichment bar chart (right), as one figure.
+# Legend for STRING evidence-flavor edge colors (what the lines in the network mean).
+string_edge_legend <- function() {
+  key <- data.frame(
+    label = c("Curated database", "Experimental", "Co-expression", "Text-mining",
+              "Neighborhood", "Gene fusion", "Co-occurrence", "Homology"),
+    col   = c("#00B7EB", "#D63CC8", "#000000", "#A6CE39",
+              "#37B34A", "#ED1C24", "#2E3192", "#B6B6E8"),
+    stringsAsFactors = FALSE)
+  key$x <- rep(c(0, 1, 2, 3), each = 2)
+  key$y <- rep(c(1, 0), times = 4)
+  ggplot(key) +
+    geom_segment(aes(x = x, xend = x + 0.16, y = y, yend = y, colour = col), linewidth = 1.7) +
+    geom_text(aes(x = x + 0.20, y = y, label = label), hjust = 0, size = 3) +
+    scale_colour_identity() +
+    scale_x_continuous(limits = c(0, 4)) + scale_y_continuous(limits = c(-0.6, 1.6)) +
+    labs(title = "Edge evidence (STRING)") +
+    theme_void(base_size = 10) +
+    theme(plot.title = element_text(face = "bold", size = 9.5),
+          plot.margin = margin(2, 6, 2, 6))
+}
+
+# Network PNG (left, sized to its own aspect) + enrichment bars (right) + edge legend (bottom).
 combine_net_bars <- function(png_file, bar_gg, out_file, title = "") {
-  img   <- pad_to_square(png::readPNG(png_file))
+  img <- png::readPNG(png_file)
+  ih  <- dim(img)[1]; iw <- dim(img)[2]
+
+  net_w <- 10; bars_w <- 6; leg_h <- 1.2                 # network gets the larger column
+  net_h <- max(5, min(net_w * ih / iw, 13))              # clamp portrait/landscape extremes
+  img   <- pad_to_aspect(img, net_w / net_h)             # pad to the panel aspect -> no stretch
   g_img <- grid::rasterGrob(img, interpolate = TRUE,
                             width = grid::unit(1, "npc"), height = grid::unit(1, "npc"))
-  p <- patchwork::wrap_elements(full = g_img) + bar_gg +
-       patchwork::plot_layout(widths = c(1, 1)) +
-       patchwork::plot_annotation(title = title,
-                                  theme = theme(plot.title = element_text(face = "bold")))
-  ggsave(out_file, p, width = 16, height = 8)
+
+  top <- patchwork::wrap_elements(full = g_img) + bar_gg + patchwork::plot_layout(widths = c(net_w, bars_w))
+  p   <- top / string_edge_legend() + patchwork::plot_layout(heights = c(net_h, leg_h)) +
+         patchwork::plot_annotation(title = title,
+                                    theme = theme(plot.title = element_text(face = "bold")))
+  ggsave(out_file, p, width = net_w + bars_w, height = net_h + leg_h, limitsize = FALSE)
 }
