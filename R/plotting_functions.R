@@ -51,9 +51,23 @@ plot_enrichment_bars <- function(enr, categories, top_n = 15, title = "") {
     theme(axis.text.y = element_text(size = 8), plot.title = element_text(face = "bold", size = 11))
 }
 
-# Network PNG (left) + enrichment bar chart (right), as one figure.
+# Pad a raster array to a square with white margins (no crop, no node loss),
+# so it can fill a square panel without aspect-ratio distortion.
+pad_to_square <- function(img) {
+  d <- dim(img); h <- d[1]; w <- d[2]
+  if (h == w) return(img)
+  s  <- max(h, w)
+  ch <- if (length(d) == 3) d[3] else 1L
+  canvas <- array(1, dim = c(s, s, ch))          # opaque white
+  y0 <- (s - h) %/% 2; x0 <- (s - w) %/% 2
+  if (length(d) == 3) canvas[(y0 + 1):(y0 + h), (x0 + 1):(x0 + w), ] <- img
+  else                canvas[(y0 + 1):(y0 + h), (x0 + 1):(x0 + w)]   <- img
+  canvas
+}
+
+# Network PNG (left, padded to square) + enrichment bar chart (right), as one figure.
 combine_net_bars <- function(png_file, bar_gg, out_file, title = "") {
-  img   <- png::readPNG(png_file)
+  img   <- pad_to_square(png::readPNG(png_file))
   g_img <- grid::rasterGrob(img, interpolate = TRUE,
                             width = grid::unit(1, "npc"), height = grid::unit(1, "npc"))
   p <- patchwork::wrap_elements(full = g_img) + bar_gg +
