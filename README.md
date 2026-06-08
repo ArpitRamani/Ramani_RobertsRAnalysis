@@ -98,6 +98,15 @@ Rscript scripts/compare_limma_welch.R  [results_dir]   # limma vs Welch concorda
 ```
 Outputs land in `<results_dir>/plots/`, `/PPI/`, and `/comparison/`.
 
+**3. Slide deck** (optional — collects every figure into a PowerPoint to share):
+
+```bash
+Rscript scripts/export_slide_pngs.R  [results_dir]   # render all figures to <results_dir>/slides_png/
+python3  scripts/build_pptx.py       [results_dir]   # -> <results_dir>/McEachin_nitration_figures.pptx
+```
+One figure per slide, title on top, an editable notes box at the bottom. Needs `python-pptx`
+(`pip install python-pptx`). The `.pptx` and PNGs live under `results/` (gitignored), not the repo.
+
 > **limma vs Welch.** The paper driver runs both tests on the same sites (`concordance=TRUE`),
 > so each `DE_*.csv` carries limma (`P.Value`/`adj.P.Val`) **and** Welch (`welch_P`/`welch_adjP`).
 > `compare_limma_welch.R` quantifies the difference: `limma_vs_welch_concordance.csv` (per-contrast

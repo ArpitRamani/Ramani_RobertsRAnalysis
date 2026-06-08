@@ -91,7 +91,7 @@ string_edge_legend <- function() {
 }
 
 # Network PNG (left, sized to its own aspect) + enrichment bars (right) + edge legend (bottom).
-combine_net_bars <- function(png_file, bar_gg, out_file, title = "") {
+combine_net_bars <- function(png_file, bar_gg, out_file, title = "", dpi = 300) {
   img <- png::readPNG(png_file)
   ih  <- dim(img)[1]; iw <- dim(img)[2]
 
@@ -105,7 +105,7 @@ combine_net_bars <- function(png_file, bar_gg, out_file, title = "") {
   p   <- top / string_edge_legend() + patchwork::plot_layout(heights = c(net_h, leg_h)) +
          patchwork::plot_annotation(title = title,
                                     theme = theme(plot.title = element_text(face = "bold")))
-  ggsave(out_file, p, width = net_w + bars_w, height = net_h + leg_h, limitsize = FALSE)
+  ggsave(out_file, p, width = net_w + bars_w, height = net_h + leg_h, dpi = dpi, limitsize = FALSE)
 }
 
 # --- limma vs Welch comparison plots ---------------------------------------
